@@ -155,6 +155,17 @@ def test_apr1_prefix_is_recognized() -> None:
     assert candidates[0].confidence == "high"
 
 
+def test_macos_prefix_is_recognized() -> None:
+    """
+    Hashes MacOS / iCloud Keychain começa, com $ml$
+    """
+
+    sample = '$ml$<iterações>$<salt hexadecimal>$<resultado hexadecimal>'
+    candidates = identify(sample)
+    assert candidates[0].algorithm == 'Apple PBKDF2-SHA512'
+    assert candidates[0].confidence == 'high'
+
+
 # =============================================================================
 # Formatos especiais
 # =============================================================================
