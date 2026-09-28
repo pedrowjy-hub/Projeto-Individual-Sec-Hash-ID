@@ -462,6 +462,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "hash",
+        nargs='?',
         help="A string de hash a identificar (envolva em aspas simples se contiver $).",
     )
     parser.add_argument(
@@ -476,8 +477,44 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         action='store_true',
         help='Imprime os candidatos em formato json.',
     )
+    parser.add_argument(
+        '--file',
+        type=argparse.FileType('r'),
+        help='Lê hashes por arquivo'
+    )
+    parser.add_argument(
+        '--cache',
+        action='store_true',
+        help='Reutiliza dados armazenados no cache'
+    )
     return parser
 
+
+def _read_inputs(args: argparse.Namespace) -> list[str]:
+    if args.hash is not None:
+        return [args.hash]
+
+    if args.file is not None:
+        lines = args.file
+
+    else:
+        lines = sys.stdin
+
+    return [
+        line.strip()
+        for line in lines
+        if line.strip()
+    ]
+
+def _candidate_data(raw_input: str, candidates: list[HashCandidate]) -> dict:
+
+    return {
+        'input': raw_input,
+        'candidates': [
+            asdict(candidate)
+            for candidate in candidates 
+        ]
+    }
 
 def _render_table(
     raw_input: str,
@@ -518,9 +555,39 @@ def main() -> int:
     """
     parser = _build_argument_parser()
     args = parser.parse_args()
-    console = Console()
 
-    candidates = identify(args.hash)
+    if args.hash is not None and args.file is not None:
+        parser.error("use o argumento hash ou --file, mas não os dois")
+
+    console = Console()
+    inputs = _read_inputs(args)
+
+    if not inputs:
+        parser.error('informe um hash, use --file ou envie dados pelo stdin')
+
+    if args.file is not None or args.hash is None:
+        cache: dict[str, list[HashCandidate]] = {}
+
+        for raw_input in inputs:
+            if args.cache:
+                candidates =  cache.get(raw_input)
+
+                if candidates is None:
+                    candidates = identify(raw_input)
+                    cache[raw_input] = candidates
+
+            else:
+                candidates = identify(raw_input)
+
+            trimmed = candidates[: args.top]
+            data = _candidate_data(raw_input,trimmed)
+            print(json.dumps(data,ensure_ascii=False))
+
+        return 0
+
+    raw_input = inputs[0]
+
+    candidates = identify(raw_input)
 
     if not candidates:
         console.print(
@@ -534,15 +601,12 @@ def main() -> int:
     trimmed = candidates[: args.top]
 
     if args.json:
-        data = data = {
-            "input": args.hash.strip(),
-            "candidates": [asdict(candidate) for candidate in trimmed],
-        }
+        data = _candidate_data(raw_input, trimmed)
         print(json.dumps(data,ensure_ascii=False,indent=2))
-        return 0 if candidates else 0
+        return 0
 
     
-    _render_table(args.hash, trimmed, console)
+    _render_table(raw_input, trimmed, console)
 
     # Dica útil — direciona o usuário para o cracker após a identificação.
     if trimmed[0].confidence == "high":

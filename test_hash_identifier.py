@@ -71,6 +71,11 @@ import pytest
 # Local: nosso próprio módulo. Extraímos as peças públicas sob teste —
 # a tabela de regras de prefixo, a dataclass de resultado e a função de entrada.
 from hash_identifier import PREFIX_RULES, HashCandidate, identify
+import io
+import sys 
+import json
+
+import hash_identifier
 
 # =============================================================================
 # Correspondências de prefixo (alta confiança)
@@ -459,3 +464,224 @@ def test_every_prefix_rule_is_recognized_with_high_confidence(
     assert candidates, f"nenhum candidato retornado para o prefixo `{prefix}`"
     assert candidates[0].algorithm == algorithm
     assert candidates[0].confidence == "high"
+
+
+def test_json_output_contains_input_and_candidates(
+    monkeypatch,
+    capsys,
+) -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", "--json", sample],
+    )
+
+    exit_code = hash_identifier.main()
+    output = capsys.readouterr().out
+
+    data = json.loads(output)
+
+    assert exit_code == 0
+    assert data["input"] == sample
+    assert isinstance(data["candidates"], list)
+    assert data["candidates"]
+    assert data["candidates"][0]["algorithm"] == "MD5"
+
+def test_json_top_limits_candidates(
+    monkeypatch,
+    capsys,
+) -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", "--json", "--top", "2", sample],
+    )
+
+    exit_code = hash_identifier.main()
+    data = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert len(data["candidates"]) == 2
+
+def test_file_produces_one_json_line_per_hash(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    first_hash = "5f4dcc3b5aa765d61d8327deb882cf99"
+    second_hash = "e10adc3949ba59abbe56e057f20f883e"
+
+    hashes_file = tmp_path / "hashes.txt"
+    hashes_file.write_text(
+        f"{first_hash}\n{second_hash}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", "--file", str(hashes_file)],
+    )
+
+    exit_code = hash_identifier.main()
+    lines = capsys.readouterr().out.strip().splitlines()
+
+    assert exit_code == 0
+    assert len(lines) == 2
+
+    first_result = json.loads(lines[0])
+    second_result = json.loads(lines[1])
+
+    assert first_result["input"] == first_hash
+    assert second_result["input"] == second_hash
+
+def test_stdin_produces_one_json_line_per_hash(
+    monkeypatch,
+    capsys,
+) -> None:
+    first_hash = "5f4dcc3b5aa765d61d8327deb882cf99"
+    second_hash = "e10adc3949ba59abbe56e057f20f883e"
+
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(f"{first_hash}\n{second_hash}\n"),
+    )
+    monkeypatch.setattr(sys, "argv", ["hashid"])
+
+    exit_code = hash_identifier.main()
+    lines = capsys.readouterr().out.strip().splitlines()
+
+    assert exit_code == 0
+    assert len(lines) == 2
+    assert json.loads(lines[0])["input"] == first_hash
+    assert json.loads(lines[1])["input"] == second_hash
+
+def test_single_stdin_hash_still_uses_json_lines(
+    monkeypatch,
+    capsys,
+) -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        io.StringIO(f"{sample}\n"),
+    )
+    monkeypatch.setattr(sys, "argv", ["hashid"])
+
+    exit_code = hash_identifier.main()
+    output = capsys.readouterr().out.strip()
+    data = json.loads(output)
+
+    assert exit_code == 0
+    assert data["input"] == sample
+
+def test_file_ignores_blank_lines(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    hashes_file = tmp_path / "hashes.txt"
+    hashes_file.write_text(
+        f"\n{sample}\n\n   \n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", "--file", str(hashes_file)],
+    )
+
+    exit_code = hash_identifier.main()
+    lines = capsys.readouterr().out.strip().splitlines()
+
+    assert exit_code == 0
+    assert len(lines) == 1
+    assert json.loads(lines[0])["input"] == sample
+
+def test_hash_and_file_together_are_rejected(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    hashes_file = tmp_path / "hashes.txt"
+    hashes_file.write_text(
+        "5f4dcc3b5aa765d61d8327deb882cf99\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "hashid",
+            "5f4dcc3b5aa765d61d8327deb882cf99",
+            "--file",
+            str(hashes_file),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as error:
+        hash_identifier.main()
+
+    assert error.value.code == 2
+
+@pytest.mark.parametrize(
+    ("extra_arguments", "expected_calls"),
+    [
+        ([], 3),
+        (["--cache"], 1),
+    ],
+)
+def test_cache_controls_identify_calls(
+    tmp_path,
+    monkeypatch,
+    capsys,
+    extra_arguments: list[str],
+    expected_calls: int,
+) -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    hashes_file = tmp_path / "hashes.txt"
+    hashes_file.write_text(
+        f"{sample}\n{sample}\n{sample}\n",
+        encoding="utf-8",
+    )
+
+    original_identify = hash_identifier.identify
+    call_count = 0
+
+    def counted_identify(text: str) -> list[HashCandidate]:
+        nonlocal call_count
+        call_count += 1
+        return original_identify(text)
+
+    monkeypatch.setattr(
+        hash_identifier,
+        "identify",
+        counted_identify,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "hashid",
+            "--file",
+            str(hashes_file),
+            *extra_arguments,
+        ],
+    )
+
+    exit_code = hash_identifier.main()
+    lines = capsys.readouterr().out.strip().splitlines()
+
+    assert exit_code == 0
+    assert len(lines) == 3
+    assert call_count == expected_calls
