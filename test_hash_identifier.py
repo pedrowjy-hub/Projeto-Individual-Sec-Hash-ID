@@ -685,3 +685,91 @@ def test_cache_controls_identify_calls(
     assert exit_code == 0
     assert len(lines) == 3
     assert call_count == expected_calls
+
+
+def test_md5_includes_hashcat_mode() -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+    candidates = identify(sample)
+
+    assert candidates[0].algorithm == "MD5"
+    assert candidates[0].hashcat_mode == 0
+
+
+def test_bcrypt_includes_hashcat_mode() -> None:
+    sample = (
+        "$2b$12$EixZaYVK1fsbw1ZfbX3OXe"
+        "PaWxn96p36WQNQy.uK4Of2T7G"
+    )
+    candidates = identify(sample)
+
+    assert candidates[0].algorithm == "bcrypt"
+    assert candidates[0].hashcat_mode == 3200
+
+def test_unknown_algorithm_has_no_hashcat_mode() -> None:
+    sample = "$algoritmo-desconhecido$dados"
+    candidates = identify(sample)
+
+    assert candidates
+    assert candidates[0].hashcat_mode is None
+
+def test_json_includes_hashcat_mode(
+    monkeypatch,
+    capsys,
+) -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", "--json", sample],
+    )
+
+    exit_code = hash_identifier.main()
+    output = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert output["candidates"][0]["hashcat_mode"] == 0
+
+def test_candidate_without_mapping_has_none_mode() -> None:
+    candidate = HashCandidate(
+        algorithm="Algoritmo sem cadastro",
+        confidence="low",
+        reason="teste",
+    )
+
+    assert candidate.hashcat_mode is None
+
+def test_table_and_next_step_include_hashcat_mode(
+    monkeypatch,
+    capsys,
+) -> None:
+    sample = (
+        "$2b$12$EixZaYVK1fsbw1ZfbX3OXe"
+        "PaWxn96p36WQNQy.uK4Of2T7G"
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", sample],
+    )
+
+    exit_code = hash_identifier.main()
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "modo hashcat" in output
+    assert "3200" in output
+    assert "hashcat -m 3200 -a 0" in output
+
+def test_hex_candidates_receive_hashcat_modes() -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+    candidates = identify(sample)
+
+    modes_by_algorithm = {
+        candidate.algorithm: candidate.hashcat_mode
+        for candidate in candidates
+    }
+
+    assert modes_by_algorithm["MD5"] == 0
+    assert modes_by_algorithm["NTLM"] == 1000
