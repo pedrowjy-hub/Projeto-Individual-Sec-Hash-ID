@@ -72,8 +72,9 @@ import pytest
 # a tabela de regras de prefixo, a dataclass de resultado e a função de entrada.
 from hash_identifier import PREFIX_RULES, HashCandidate, identify
 import io
-import sys 
+import sys
 import json
+import base64
 
 import hash_identifier
 
@@ -489,6 +490,7 @@ def test_json_output_contains_input_and_candidates(
     assert data["candidates"]
     assert data["candidates"][0]["algorithm"] == "MD5"
 
+
 def test_json_top_limits_candidates(
     monkeypatch,
     capsys,
@@ -506,6 +508,7 @@ def test_json_top_limits_candidates(
 
     assert exit_code == 0
     assert len(data["candidates"]) == 2
+
 
 def test_file_produces_one_json_line_per_hash(
     tmp_path,
@@ -539,6 +542,7 @@ def test_file_produces_one_json_line_per_hash(
     assert first_result["input"] == first_hash
     assert second_result["input"] == second_hash
 
+
 def test_stdin_produces_one_json_line_per_hash(
     monkeypatch,
     capsys,
@@ -561,6 +565,7 @@ def test_stdin_produces_one_json_line_per_hash(
     assert json.loads(lines[0])["input"] == first_hash
     assert json.loads(lines[1])["input"] == second_hash
 
+
 def test_single_stdin_hash_still_uses_json_lines(
     monkeypatch,
     capsys,
@@ -580,6 +585,7 @@ def test_single_stdin_hash_still_uses_json_lines(
 
     assert exit_code == 0
     assert data["input"] == sample
+
 
 def test_file_ignores_blank_lines(
     tmp_path,
@@ -607,6 +613,7 @@ def test_file_ignores_blank_lines(
     assert len(lines) == 1
     assert json.loads(lines[0])["input"] == sample
 
+
 def test_hash_and_file_together_are_rejected(
     tmp_path,
     monkeypatch,
@@ -632,6 +639,7 @@ def test_hash_and_file_together_are_rejected(
         hash_identifier.main()
 
     assert error.value.code == 2
+
 
 @pytest.mark.parametrize(
     ("extra_arguments", "expected_calls"),
@@ -696,14 +704,13 @@ def test_md5_includes_hashcat_mode() -> None:
 
 
 def test_bcrypt_includes_hashcat_mode() -> None:
-    sample = (
-        "$2b$12$EixZaYVK1fsbw1ZfbX3OXe"
-        "PaWxn96p36WQNQy.uK4Of2T7G"
-    )
+    sample = ("$2b$12$EixZaYVK1fsbw1ZfbX3OXe"
+              "PaWxn96p36WQNQy.uK4Of2T7G")
     candidates = identify(sample)
 
     assert candidates[0].algorithm == "bcrypt"
     assert candidates[0].hashcat_mode == 3200
+
 
 def test_unknown_algorithm_has_no_hashcat_mode() -> None:
     sample = "$algoritmo-desconhecido$dados"
@@ -711,6 +718,7 @@ def test_unknown_algorithm_has_no_hashcat_mode() -> None:
 
     assert candidates
     assert candidates[0].hashcat_mode is None
+
 
 def test_json_includes_hashcat_mode(
     monkeypatch,
@@ -730,6 +738,7 @@ def test_json_includes_hashcat_mode(
     assert exit_code == 0
     assert output["candidates"][0]["hashcat_mode"] == 0
 
+
 def test_candidate_without_mapping_has_none_mode() -> None:
     candidate = HashCandidate(
         algorithm="Algoritmo sem cadastro",
@@ -739,14 +748,13 @@ def test_candidate_without_mapping_has_none_mode() -> None:
 
     assert candidate.hashcat_mode is None
 
+
 def test_table_and_next_step_include_hashcat_mode(
     monkeypatch,
     capsys,
 ) -> None:
-    sample = (
-        "$2b$12$EixZaYVK1fsbw1ZfbX3OXe"
-        "PaWxn96p36WQNQy.uK4Of2T7G"
-    )
+    sample = ("$2b$12$EixZaYVK1fsbw1ZfbX3OXe"
+              "PaWxn96p36WQNQy.uK4Of2T7G")
 
     monkeypatch.setattr(
         sys,
@@ -762,6 +770,7 @@ def test_table_and_next_step_include_hashcat_mode(
     assert "3200" in output
     assert "hashcat -m 3200 -a 0" in output
 
+
 def test_hex_candidates_receive_hashcat_modes() -> None:
     sample = "5f4dcc3b5aa765d61d8327deb882cf99"
     candidates = identify(sample)
@@ -773,3 +782,133 @@ def test_hex_candidates_receive_hashcat_modes() -> None:
 
     assert modes_by_algorithm["MD5"] == 0
     assert modes_by_algorithm["NTLM"] == 1000
+
+
+@pytest.mark.parametrize(
+    "sample",
+    [
+        "http://example.com",
+        "https://example.com/login",
+    ],
+)
+def test_url_is_recognized_as_not_a_hash(sample: str) -> None:
+    candidates = identify(sample)
+
+    assert candidates
+    assert "URL" in candidates[0].algorithm
+    assert candidates[0].confidence == "low"
+    assert candidates[0].hashcat_mode is None
+
+
+def test_url_marker_must_be_at_the_start() -> None:
+    sample = "prefixo-https://example.com"
+
+    candidates = identify(sample)
+
+    assert not any("URL" in candidate.algorithm for candidate in candidates)
+
+
+def test_word_starting_with_http_is_not_a_url() -> None:
+    sample = "httpqualquercoisa"
+
+    candidates = identify(sample)
+
+    assert not any("URL" in candidate.algorithm for candidate in candidates)
+
+
+def test_0x_with_non_hex_body_is_not_recognized_as_hex() -> None:
+    sample = "0xisso-nao-e-hexadecimal"
+
+    candidates = identify(sample)
+
+    assert not any("0x" in candidate.algorithm for candidate in candidates)
+
+
+def test_base58_input_is_recognized() -> None:
+    sample = "1BoatSLRHtKNngkdXEeobR76b53LETtpyT"
+
+    candidates = identify(sample)
+
+    assert candidates
+    assert "Base58" in candidates[0].algorithm
+    assert candidates[0].confidence == "low"
+    assert candidates[0].hashcat_mode is None
+
+
+@pytest.mark.parametrize(
+    "forbidden_character",
+    ["0", "O", "I", "l"],
+)
+def test_base58_rejects_forbidden_characters(
+    forbidden_character: str, ) -> None:
+    sample = ("123456789ABCDEFGHJKLMNPQRSTUVWXYZ" + forbidden_character)
+
+    candidates = identify(sample)
+
+    assert not any("Base58" in candidate.algorithm for candidate in candidates)
+
+
+def test_short_base58_compatible_word_is_not_recognized() -> None:
+    sample = "Pedro"
+
+    candidates = identify(sample)
+
+    assert not any("Base58" in candidate.algorithm for candidate in candidates)
+
+
+def test_unpadded_base32_is_recognized() -> None:
+    sample = "JBSWY3DPEHPK3PXP"
+
+    candidates = identify(sample)
+
+    assert candidates
+    assert "Base32" in candidates[0].algorithm
+    assert candidates[0].confidence == "low"
+    assert candidates[0].hashcat_mode is None
+
+
+def test_padded_base32_is_recognized() -> None:
+    sample = base64.b32encode(b"this is a sufficiently long secret").decode(
+        "ascii")
+
+    candidates = identify(sample)
+
+    assert candidates
+    assert "Base32" in candidates[0].algorithm
+    assert candidates[0].confidence == "low"
+
+
+def test_base32_rejects_invalid_digit() -> None:
+    sample = "JBSWY3DPEHPK3PX8"
+
+    candidates = identify(sample)
+
+    assert not any("Base32" in candidate.algorithm for candidate in candidates)
+
+
+def test_base32_rejects_padding_in_the_middle() -> None:
+    sample = "JBSWY3D=EHPK3PXP"
+
+    candidates = identify(sample)
+
+    assert not any("Base32" in candidate.algorithm for candidate in candidates)
+
+
+def test_md5_is_not_misclassified_as_encoded_data() -> None:
+    sample = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    candidates = identify(sample)
+
+    assert candidates
+    assert candidates[0].algorithm == "MD5"
+    assert "Base58" not in candidates[0].algorithm
+    assert "Base32" not in candidates[0].algorithm
+
+
+def test_base32_has_priority_over_base58() -> None:
+    sample = "JBSWY3DPEHPK3PXP"
+
+    candidates = identify(sample)
+
+    assert candidates
+    assert "Base32" in candidates[0].algorithm

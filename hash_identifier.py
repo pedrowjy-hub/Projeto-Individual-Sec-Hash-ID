@@ -87,7 +87,6 @@ from rich.table import Table
 
 Confidence = Literal["high", "medium", "low"]
 
-
 # =============================================================================
 # Tipo de Resultado — o que identify() retorna para cada palpite
 # =============================================================================
@@ -118,7 +117,7 @@ class HashCandidate:
     algorithm: str
     confidence: Confidence
     reason: str
-    hashcat_mode : int | None = None
+    hashcat_mode: int | None = None
 
 
 # =============================================================================
@@ -135,7 +134,8 @@ class HashCandidate:
 PREFIX_RULES: list[tuple[str, str, str]] = [
     # Família Argon2 — venceu a Password Hashing Competition de 2015
     ("$argon2id$", "Argon2id", "string PHC moderna, o padrão atual"),
-    ("$argon2i$", "Argon2i", "string PHC, variante resistente a canais laterais"),
+    ("$argon2i$", "Argon2i",
+     "string PHC, variante resistente a canais laterais"),
     ("$argon2d$", "Argon2d", "string PHC, variante resistente a GPU"),
     # bcrypt e suas variantes — cavalo de batalha dos últimos 15 anos
     ("$2y$", "bcrypt", "string PHC bcrypt, variante 2y (PHP)"),
@@ -149,7 +149,8 @@ PREFIX_RULES: list[tuple[str, str, str]] = [
     # Variante MD5 do Apache htpasswd — mesma família MD5 do $1$ acima, mas
     # com o ajuste de manipulação de salt do Apache. Este é o formato que
     # `htpasswd -m` emite por padrão.
-    ("$apr1$", "Apache MD5-crypt", "variante MD5 do Apache htpasswd (`htpasswd -m`)"),
+    ("$apr1$", "Apache MD5-crypt",
+     "variante MD5 do Apache htpasswd (`htpasswd -m`)"),
     # yescrypt — novo padrão Linux em algumas distribuições
     ("$y$", "yescrypt", "string PHC, sucessor moderno do Linux crypt"),
     # phpass — usado pelo WordPress, phpBB e outros apps PHP
@@ -160,7 +161,8 @@ PREFIX_RULES: list[tuple[str, str, str]] = [
     # scrypt como algumas implementações o codificam
     ("$7$", "scrypt", "hash estilo PHC scrypt"),
     # Padrão do Django — reconhecível pelo nome do algoritmo no prefixo
-    ("pbkdf2_sha256$", "Django PBKDF2-SHA256", "hash de senha padrão do Django"),
+    ("pbkdf2_sha256$", "Django PBKDF2-SHA256", "hash de senha padrão do Django"
+     ),
     ("pbkdf2_sha1$", "Django PBKDF2-SHA1", "hash de senha legado do Django"),
     ("bcrypt_sha256$", "Django bcrypt-SHA256", "wrapper bcrypt do Django"),
     ("argon2$", "Django Argon2", "wrapper Argon2 do Django"),
@@ -171,9 +173,9 @@ PREFIX_RULES: list[tuple[str, str, str]] = [
     ("{MD5}", "LDAP MD5", "MD5 do LDAP (carga base64)"),
     ("{CRYPT}", "LDAP CRYPT", "LDAP envolvendo um hash crypt(3)"),
     # Hash adicionados posteriormente
-    ('$ml$','Apple PBKDF2-SHA512', 'formato de armazenamento de senha do macOS')
+    ('$ml$', 'Apple PBKDF2-SHA512',
+     'formato de armazenamento de senha do macOS')
 ]
-
 
 # =============================================================================
 # Regras de comprimento e hex — fallback quando nenhum prefixo correspondeu
@@ -273,8 +275,7 @@ def _is_mysql5(text: str) -> bool:
 # DES crypt tradicional — hashes /etc/passwd legados de sistemas Unix pré-shadow.
 # Eles não têm prefixo: apenas 13 caracteres de um alfabeto específico de 64 chars.
 _DESCRYPT_CHARSET: frozenset[str] = frozenset(
-    "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-)
+    "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 _DESCRYPT_TOTAL_LENGTH = 13
 
 
@@ -286,9 +287,27 @@ def _is_descrypt(text: str) -> bool:
     Relatamos confiança MÉDIA (não ALTA) porque uma string de 13 caracteres
     nesse charset PODE ser outras coisas (IDs de sessão, valores codificados).
     """
-    return len(text) == _DESCRYPT_TOTAL_LENGTH and all(
-        c in _DESCRYPT_CHARSET for c in text
-    )
+    return len(text) == _DESCRYPT_TOTAL_LENGTH and all(c in _DESCRYPT_CHARSET
+                                                       for c in text)
+
+
+BASE58_CHARSET: frozenset[str] = frozenset(
+    "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+
+
+def _is_base58(text: str) -> bool:
+    return (len(text) >= 26
+            and all(character in BASE58_CHARSET for character in text))
+
+
+BASE32_CHARSET: frozenset[str] = frozenset('ABCDEFGHIJKLMNOPQRSTUVWXYZ234567')
+
+
+def _is_base32(text: str) -> bool:
+    unpadded = text.rstrip("=")
+
+    return (len(unpadded) >= 16
+            and all(character in BASE32_CHARSET for character in unpadded))
 
 
 # =============================================================================
@@ -296,13 +315,14 @@ def _is_descrypt(text: str) -> bool:
 # =============================================================================
 # pylint: disable=too-many-return-statements,too-many-branches
 
-def _make_candidate(algorithm: str, confidence: Confidence, reason: str) -> HashCandidate:
-    return HashCandidate(
-            algorithm = algorithm, 
-            confidence = confidence, 
-            reason = reason, 
-            hashcat_mode = HASHCAT_MODES.get(algorithm)
-        )
+
+def _make_candidate(algorithm: str, confidence: Confidence,
+                    reason: str) -> HashCandidate:
+    return HashCandidate(algorithm=algorithm,
+                         confidence=confidence,
+                         reason=reason,
+                         hashcat_mode=HASHCAT_MODES.get(algorithm))
+
 
 def identify(raw_input: str) -> list[HashCandidate]:
     """
@@ -348,7 +368,9 @@ def identify(raw_input: str) -> list[HashCandidate]:
     for prefix, algorithm, note in PREFIX_RULES:
         if text.startswith(prefix):
             return [
-                _make_candidate(algorithm=algorithm, confidence='high',reason=note)
+                _make_candidate(algorithm=algorithm,
+                                confidence='high',
+                                reason=note)
             ]
 
     # ----- Passo 2: formatos especiais não-PHC -----
@@ -376,7 +398,8 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 _make_candidate(
                     algorithm="NetNTLMv1",
                     confidence="high",
-                    reason="formato usuario::dominio:lm(48 hex):nt(48 hex):desafio",
+                    reason=
+                    "formato usuario::dominio:lm(48 hex):nt(48 hex):desafio",
                 )
             ]
 
@@ -386,7 +409,8 @@ def identify(raw_input: str) -> list[HashCandidate]:
             _make_candidate(
                 algorithm="MySQL5",
                 confidence="high",
-                reason="começa com `*` seguido por 40 caracteres hex maiúsculos",
+                reason=
+                "começa com `*` seguido por 40 caracteres hex maiúsculos",
             )
         ]
 
@@ -396,7 +420,8 @@ def identify(raw_input: str) -> list[HashCandidate]:
             _make_candidate(
                 algorithm="DES crypt",
                 confidence="medium",
-                reason="13 caracteres em `./0-9A-Za-z` — formato legado /etc/passwd",
+                reason=
+                "13 caracteres em `./0-9A-Za-z` — formato legado /etc/passwd",
             )
         ]
 
@@ -408,18 +433,14 @@ def identify(raw_input: str) -> list[HashCandidate]:
             # O primeiro algoritmo listado para cada comprimento é o padrão moderno
             # e recebe confiança MÉDIA. O restante é BAIXA.
             confidence: Confidence = "medium" if index == 0 else "low"
-            label = (
-                "candidato mais provável para este comprimento"
-                if index == 0
-                else "também possível para este comprimento"
-            )
+            label = ("candidato mais provável para este comprimento" if index
+                     == 0 else "também possível para este comprimento")
             candidates.append(
                 _make_candidate(
                     algorithm=algorithm,
                     confidence=confidence,
                     reason=f"{len(text)} caracteres hex — {label}",
-                )
-            )
+                ))
         return candidates
 
     # ----- Passo 4: fallback genérico para string PHC -----
@@ -437,12 +458,30 @@ def identify(raw_input: str) -> list[HashCandidate]:
                     _make_candidate(
                         algorithm=f"String PHC ({algo_name})",
                         confidence="low",
-                        reason=f"formato `${algo_name}$...` — PHC genérico, sem regra específica",
+                        reason=
+                        f"formato `${algo_name}$...` — PHC genérico, sem regra específica",
                     )
                 ]
 
     # ----- Passo 5: dicas de formatos que não são hashes -----
     # Iniciantes costumam colar JWTs ou blobs base64 em um identificador de hash.
+    if text.startswith(('http://', 'https://')):
+        # url
+        return [
+            _make_candidate(algorithm='URL (não é um hash)',
+                            confidence='low',
+                            reason='começa com http:// ou https://')
+        ]
+
+    if text.startswith(('0x', '0X')) and len(text) > 2 and _is_hex(text[2:]):
+        return [
+            _make_candidate(
+                algorithm='Hex (não é um hash)',
+                confidence='low',
+                reason=
+                'o prefixo `0x` é usado em endereços Ethereum, endereços de memória',
+            )
+        ]
     if text.startswith("eyJ"):
         # JWTs sempre começam com `eyJ` porque seu cabeçalho JSON `{"alg":...}`
         # em base64 começa com esses três caracteres.
@@ -453,6 +492,27 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 reason='prefixo `eyJ` é o base64 de `{"` — JWT, não é um hash',
             )
         ]
+
+    if _is_base32(text):
+        return [
+            _make_candidate(
+                algorithm="Possível Base32 (não é necessariamente um hash)",
+                confidence="low",
+                reason=("usa somente A-Z e 2-7, com formato "
+                        "compatível com Base32"),
+            )
+        ]
+
+    if _is_base58(text):
+        return [
+            _make_candidate(
+                algorithm='Base58 (não é um hash)',
+                confidence='low',
+                reason=("todos os caracteres pertencem ao alfabeto Base58 "
+                        "e a entrada possui pelo menos 26 caracteres"),
+            )
+        ]
+
     if any(c in text for c in "+/=") and len(text) > 8:
         # Hashes hex NUNCA contêm `+`, `/`, ou `=`.
         return [
@@ -480,13 +540,13 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         prog="hashid",
         description=(
             "Identifica uma string de hash por prefixo, comprimento e charset. "
-            "Retorna candidatos classificados com confiança e raciocínio."
-        ),
+            "Retorna candidatos classificados com confiança e raciocínio."),
     )
     parser.add_argument(
         "hash",
         nargs='?',
-        help="A string de hash a identificar (envolva em aspas simples se contiver $).",
+        help=
+        "A string de hash a identificar (envolva em aspas simples se contiver $).",
     )
     parser.add_argument(
         "--top",
@@ -500,16 +560,12 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         action='store_true',
         help='Imprime os candidatos em formato json.',
     )
-    parser.add_argument(
-        '--file',
-        type=argparse.FileType('r'),
-        help='Lê hashes por arquivo'
-    )
-    parser.add_argument(
-        '--cache',
-        action='store_true',
-        help='Reutiliza dados armazenados no cache'
-    )
+    parser.add_argument('--file',
+                        type=argparse.FileType('r'),
+                        help='Lê hashes por arquivo')
+    parser.add_argument('--cache',
+                        action='store_true',
+                        help='Reutiliza dados armazenados no cache')
     return parser
 
 
@@ -523,21 +579,16 @@ def _read_inputs(args: argparse.Namespace) -> list[str]:
     else:
         lines = sys.stdin
 
-    return [
-        line.strip()
-        for line in lines
-        if line.strip()
-    ]
+    return [line.strip() for line in lines if line.strip()]
+
 
 def _candidate_data(raw_input: str, candidates: list[HashCandidate]) -> dict:
 
     return {
         'input': raw_input,
-        'candidates': [
-            asdict(candidate)
-            for candidate in candidates 
-        ]
+        'candidates': [asdict(candidate) for candidate in candidates]
     }
+
 
 def _render_table(
     raw_input: str,
@@ -566,12 +617,9 @@ def _render_table(
 
     for candidate in candidates:
         color = confidence_colors[candidate.confidence]
-        
-        mode = (
-            str(candidate.hashcat_mode)
-            if candidate.hashcat_mode is not None
-            else "—"
-        )
+
+        mode = (str(candidate.hashcat_mode)
+                if candidate.hashcat_mode is not None else "—")
 
         table.add_row(
             candidate.algorithm,
@@ -603,7 +651,7 @@ def main() -> int:
 
         for raw_input in inputs:
             if args.cache:
-                candidates =  cache.get(raw_input)
+                candidates = cache.get(raw_input)
 
                 if candidates is None:
                     candidates = identify(raw_input)
@@ -612,9 +660,9 @@ def main() -> int:
             else:
                 candidates = identify(raw_input)
 
-            trimmed = candidates[: args.top]
-            data = _candidate_data(raw_input,trimmed)
-            print(json.dumps(data,ensure_ascii=False))
+            trimmed = candidates[:args.top]
+            data = _candidate_data(raw_input, trimmed)
+            print(json.dumps(data, ensure_ascii=False))
 
         return 0
 
@@ -626,29 +674,25 @@ def main() -> int:
         console.print(
             "[red]Nenhuma identificação possível.[/red] "
             "A entrada não correspondeu a nenhum prefixo conhecido, formato especial "
-            "ou comprimento hexadecimal."
-        )
+            "ou comprimento hexadecimal.")
         return 1
 
     # Limita aos top-N solicitados
-    trimmed = candidates[: args.top]
+    trimmed = candidates[:args.top]
 
     if args.json:
         data = _candidate_data(raw_input, trimmed)
-        print(json.dumps(data,ensure_ascii=False,indent=2))
+        print(json.dumps(data, ensure_ascii=False, indent=2))
         return 0
 
-    
     _render_table(raw_input, trimmed, console)
 
     # Dica útil — direciona o usuário para o cracker após a identificação.
     top_candidate = trimmed[0]
     if top_candidate.confidence == "high" and top_candidate.hashcat_mode is not None:
-        console.print(
-            "\n[dim]Próximo passo: "
-            f"hashcat -m {top_candidate.hashcat_mode} "
-            f"-a 0 '{raw_input}' wordlist.txt[/dim]"
-        )
+        console.print("\n[dim]Próximo passo: "
+                      f"hashcat -m {top_candidate.hashcat_mode} "
+                      f"-a 0 '{raw_input}' wordlist.txt[/dim]")
 
     return 0
 
