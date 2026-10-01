@@ -566,6 +566,10 @@ def _build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument('--cache',
                         action='store_true',
                         help='Reutiliza dados armazenados no cache')
+    parser.add_argument(
+        '--split',
+        action='store_true',
+        help='Analisa separadamente campos separados por dois pontos')
     return parser
 
 
@@ -582,12 +586,69 @@ def _read_inputs(args: argparse.Namespace) -> list[str]:
     return [line.strip() for line in lines if line.strip()]
 
 
+def _looks_like_salt(field: str) -> bool:
+    return (4 <= len(field) <= 32
+            and any(character.isalpha() for character in field)
+            and any(character.isdigit() for character in field))
+
+
+def _classify_fields(field: str) -> tuple[str, str]:
+    text = field.strip()
+
+    if not text:
+        return 'vazio', 'campo sem conteúdo'
+
+    candidates = identify(text)
+
+    if candidates:
+        top_candidate = candidates[0]
+
+        _is_not_hash = 'não é' in top_candidate.algorithm.lower()
+
+        if not _is_not_hash:
+            return ('hash', (f'{top_candidate.algorithm}'
+                             f'({top_candidate.confidence})'))
+        return ('outro formato', candidates[0].algorithm)
+
+    if text.isalpha():
+        return ('usuário', 'campo composto somente por letras')
+
+    if _looks_like_salt(text):
+        return ('salt', 'texto curto e aleatóreo')
+
+    return ('garbage', 'não correspondeu as heurísticas')
+
+
 def _candidate_data(raw_input: str, candidates: list[HashCandidate]) -> dict:
 
     return {
         'input': raw_input,
         'candidates': [asdict(candidate) for candidate in candidates]
     }
+
+
+def _run_split_mode(raw_inputs: list[str], console: Console) -> int:
+
+    table = Table(title='Análise dos campos', show_lines=True)
+
+    table.add_column('posição')
+    table.add_column('conteúdo')
+    table.add_column('classificação')
+    table.add_column('detalhe')
+
+    for record_index, raw_input in enumerate(raw_inputs, start=1):
+
+        field = raw_input.split(':')
+
+        for index, field in enumerate(field):
+
+            classification, detail = _classify_fields(field)
+
+            table.add_row(str(record_index), str(index), field or '-',
+                          classification, detail)
+
+    console.print(table)
+    return 0
 
 
 def _render_table(
@@ -641,7 +702,11 @@ def main() -> int:
         parser.error("use o argumento hash ou --file, mas não os dois")
 
     console = Console()
+
     inputs = _read_inputs(args)
+
+    if args.split:
+        return _run_split_mode(inputs, console)
 
     if not inputs:
         parser.error('informe um hash, use --file ou envie dados pelo stdin')

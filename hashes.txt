@@ -4,3 +4,10 @@ $2b$12$EixZaYVK1fsbw1ZfbX3OXePaWxn96p36WQNQy.uK4Of2T7G.VHvgvWK
 $argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG
 $apr1$JlOdSlVe$ipa1mTAv3LFRBHHzqaIaH/
 *A4B6157319038724E3560894F7F932C8886EBFCF
+alice:5f4dcc3b5aa765d61d8327deb882cf99:salt123
+bob:e10adc3949ba59abbe56e057f20f883e:abc987
+peter:ASDASDSASDSADAS232343556:ola567
+carol:senha-em-texto-plano:abc123
+registro:valor-com-hifen:!@#-nao-e-hash
+campos::com:valor-vazio
+http://exemplo.com:8080/recurso

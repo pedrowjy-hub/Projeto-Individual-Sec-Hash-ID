@@ -912,3 +912,159 @@ def test_base32_has_priority_over_base58() -> None:
 
     assert candidates
     assert "Base32" in candidates[0].algorithm
+
+
+def test_split_mode_classifies_single_record(
+    monkeypatch,
+    capsys,
+) -> None:
+    sample_hash = "5f4dcc3b5aa765d61d8327deb882cf99"
+    record = f"alice:{sample_hash}:salt123"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", "--split", record],
+    )
+
+    exit_code = hash_identifier.main()
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Análise dos campos" in output
+
+    assert "alice" in output
+    assert "usuário" in output
+
+    assert "hash" in output
+    assert "MD5" in output
+    assert "medium" in output
+
+    assert "salt123" in output
+    assert "salt" in output
+
+
+def test_split_mode_recognizes_empty_field(
+    monkeypatch,
+    capsys,
+) -> None:
+    record = "alice::salt123"
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", "--split", record],
+    )
+
+    exit_code = hash_identifier.main()
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "alice" in output
+    assert "vazio" in output
+    assert "campo sem conteúdo" in output
+    assert "salt123" in output
+
+
+def test_split_mode_reads_multiple_records_from_file(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    md5_hash = "5f4dcc3b5aa765d61d8327deb882cf99"
+    sha1_hash = "a" * 40
+
+    records_file = tmp_path / "records.txt"
+    records_file.write_text(
+        f"alice:{md5_hash}:salt123\n"
+        f"bob:{sha1_hash}:secret456\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "hashid",
+            "--split",
+            "--file",
+            str(records_file),
+        ],
+    )
+
+    exit_code = hash_identifier.main()
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+
+    assert "alice" in output
+    assert "bob" in output
+
+    assert "MD5" in output
+    assert "SHA-1" in output
+
+    assert "salt123" in output
+    assert "secret456" in output
+
+
+def test_split_mode_reads_records_from_stdin(
+    monkeypatch,
+    capsys,
+) -> None:
+    md5_hash = "5f4dcc3b5aa765d61d8327deb882cf99"
+
+    fake_stdin = io.StringIO(f"alice:{md5_hash}:salt123\n"
+                             f"bob:{md5_hash}:secret456\n")
+
+    monkeypatch.setattr(
+        sys,
+        "stdin",
+        fake_stdin,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["hashid", "--split"],
+    )
+
+    exit_code = hash_identifier.main()
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "alice" in output
+    assert "bob" in output
+    assert "salt123" in output
+    assert "secret456" in output
+    assert "MD5" in output
+
+
+@pytest.mark.parametrize(
+    ("field", "expected_classification"),
+    [
+        ("", "vazio"),
+        ("alice", "usuário"),
+        (
+            "5f4dcc3b5aa765d61d8327deb882cf99",
+            "hash",
+        ),
+        ("salt123", "salt"),
+        ("!!!", "garbage"),
+    ],
+)
+def test_classify_field(
+    field: str,
+    expected_classification: str,
+) -> None:
+    classification, detail = (hash_identifier._classify_fields(field))
+
+    assert classification == expected_classification
+    assert isinstance(detail, str)
+    assert detail
+
+
+def test_s_recognizes_non_hash_format() -> None:
+    classification, detail = (
+        hash_identifier._classify_fields("https://example.com"))
+
+    assert classification == "outro formato"
+    assert "URL" in detail
