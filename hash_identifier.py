@@ -85,7 +85,7 @@ from rich.table import Table
 # em tempo de edição. Escolhemos Literal em vez de Enum porque prefiro
 # Literals para conjuntos fixos pequenos.
 
-Confidence = Literal["high", "medium", "low"]
+#para o desafio 3.2 removi o Literal para que seja confidence_score entre 0 e 1
 
 # =============================================================================
 # Tipo de Resultado — o que identify() retorna para cada palpite
@@ -115,9 +115,13 @@ class HashCandidate:
     """
 
     algorithm: str
-    confidence: Confidence
+    confidence_score: float
     reason: str
     hashcat_mode: int | None = None
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.confidence_score <= 1.0:
+            raise ValueError('confidence score deve ser entre 0 e 1')
 
 
 # =============================================================================
@@ -316,10 +320,10 @@ def _is_base32(text: str) -> bool:
 # pylint: disable=too-many-return-statements,too-many-branches
 
 
-def _make_candidate(algorithm: str, confidence: Confidence,
+def _make_candidate(algorithm: str, confidence_score: float,
                     reason: str) -> HashCandidate:
     return HashCandidate(algorithm=algorithm,
-                         confidence=confidence,
+                         confidence_score=confidence_score,
                          reason=reason,
                          hashcat_mode=HASHCAT_MODES.get(algorithm))
 
@@ -369,7 +373,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         if text.startswith(prefix):
             return [
                 _make_candidate(algorithm=algorithm,
-                                confidence='high',
+                                confidence_score=0.95,
                                 reason=note)
             ]
 
@@ -387,7 +391,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
             return [
                 _make_candidate(
                     algorithm="NetNTLMv2",
-                    confidence="high",
+                    confidence_score=0.85,
                     reason="formato usuario::dominio:desafio:hmac(32 hex):blob",
                 )
             ]
@@ -397,7 +401,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
             return [
                 _make_candidate(
                     algorithm="NetNTLMv1",
-                    confidence="high",
+                    confidence_score=0.85,
                     reason=
                     "formato usuario::dominio:lm(48 hex):nt(48 hex):desafio",
                 )
@@ -408,7 +412,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         return [
             _make_candidate(
                 algorithm="MySQL5",
-                confidence="high",
+                confidence_score=0.85,
                 reason=
                 "começa com `*` seguido por 40 caracteres hex maiúsculos",
             )
@@ -419,7 +423,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         return [
             _make_candidate(
                 algorithm="DES crypt",
-                confidence="medium",
+                confidence_score=0.85,
                 reason=
                 "13 caracteres em `./0-9A-Za-z` — formato legado /etc/passwd",
             )
@@ -432,13 +436,17 @@ def identify(raw_input: str) -> list[HashCandidate]:
         for index, algorithm in enumerate(algorithms):
             # O primeiro algoritmo listado para cada comprimento é o padrão moderno
             # e recebe confiança MÉDIA. O restante é BAIXA.
-            confidence: Confidence = "medium" if index == 0 else "low"
+            HEX_CHARSET_BONUS = 0.05
+
+            position = index + 1
+            confidence_score = 0.55 / position + HEX_CHARSET_BONUS
+
             label = ("candidato mais provável para este comprimento" if index
                      == 0 else "também possível para este comprimento")
             candidates.append(
                 _make_candidate(
                     algorithm=algorithm,
-                    confidence=confidence,
+                    confidence_score=confidence_score,
                     reason=f"{len(text)} caracteres hex — {label}",
                 ))
         return candidates
@@ -457,7 +465,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 return [
                     _make_candidate(
                         algorithm=f"String PHC ({algo_name})",
-                        confidence="low",
+                        confidence_score=0.85,
                         reason=
                         f"formato `${algo_name}$...` — PHC genérico, sem regra específica",
                     )
@@ -469,7 +477,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         # url
         return [
             _make_candidate(algorithm='URL (não é um hash)',
-                            confidence='low',
+                            confidence_score=0.3,
                             reason='começa com http:// ou https://')
         ]
 
@@ -477,7 +485,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         return [
             _make_candidate(
                 algorithm='Hex (não é um hash)',
-                confidence='low',
+                confidence_score=0.3,
                 reason=
                 'o prefixo `0x` é usado em endereços Ethereum, endereços de memória',
             )
@@ -488,7 +496,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         return [
             _make_candidate(
                 algorithm="JWT (não é um hash)",
-                confidence="low",
+                confidence_score=0.3,
                 reason='prefixo `eyJ` é o base64 de `{"` — JWT, não é um hash',
             )
         ]
@@ -497,7 +505,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         return [
             _make_candidate(
                 algorithm="Possível Base32 (não é necessariamente um hash)",
-                confidence="low",
+                confidence_score=0.3,
                 reason=("usa somente A-Z e 2-7, com formato "
                         "compatível com Base32"),
             )
@@ -507,7 +515,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         return [
             _make_candidate(
                 algorithm='Base58 (não é um hash)',
-                confidence='low',
+                confidence_score=0.3,
                 reason=("todos os caracteres pertencem ao alfabeto Base58 "
                         "e a entrada possui pelo menos 26 caracteres"),
             )
@@ -518,7 +526,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
         return [
             _make_candidate(
                 algorithm="Blob Base64 (não é um hash)",
-                confidence="low",
+                confidence_score=0.3,
                 reason="contém caracteres exclusivos de base64 (`+`, `/`, `=`)",
             )
         ]
@@ -607,7 +615,7 @@ def _classify_fields(field: str) -> tuple[str, str]:
 
         if not _is_not_hash:
             return ('hash', (f'{top_candidate.algorithm}'
-                             f'({top_candidate.confidence})'))
+                             f'({top_candidate.confidence_score})'))
         return ('outro formato', candidates[0].algorithm)
 
     if text.isalpha():
@@ -651,6 +659,16 @@ def _run_split_mode(raw_inputs: list[str], console: Console) -> int:
     return 0
 
 
+def _confidence_style(score: float) -> tuple[str, str]:
+    if score > 0.8:
+        return 'high', 'green'
+
+    if score >= 0.5:
+        return 'medium', 'yellow'
+
+    return 'low', 'cyan'
+
+
 def _render_table(
     raw_input: str,
     candidates: list[HashCandidate],
@@ -670,21 +688,20 @@ def _render_table(
     table.add_column("motivo", style="dim")
 
     # Cores para os níveis de confiança.
-    confidence_colors: dict[Confidence, str] = {
-        "high": "green",
-        "medium": "yellow",
-        "low": "cyan",
-    }
 
     for candidate in candidates:
-        color = confidence_colors[candidate.confidence]
+        label, color = _confidence_style(candidate.confidence_score)
 
         mode = (str(candidate.hashcat_mode)
                 if candidate.hashcat_mode is not None else "—")
 
+        confidence_text = (f"[{color}]"
+                           f"{candidate.confidence_score:.0%} ({label})"
+                           f"[/{color}]")
+
         table.add_row(
             candidate.algorithm,
-            f"[{color}]{candidate.confidence}[/{color}]",
+            confidence_text,
             mode,
             candidate.reason,
         )
@@ -754,7 +771,7 @@ def main() -> int:
 
     # Dica útil — direciona o usuário para o cracker após a identificação.
     top_candidate = trimmed[0]
-    if top_candidate.confidence == "high" and top_candidate.hashcat_mode is not None:
+    if top_candidate.confidence_score > 0.8 and top_candidate.hashcat_mode is not None:
         console.print("\n[dim]Próximo passo: "
                       f"hashcat -m {top_candidate.hashcat_mode} "
                       f"-a 0 '{raw_input}' wordlist.txt[/dim]")
