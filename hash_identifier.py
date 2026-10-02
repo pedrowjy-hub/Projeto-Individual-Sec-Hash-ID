@@ -88,10 +88,15 @@ from rich.table import Table
 #para o desafio 3.2 removi o Literal para que seja confidence_score entre 0 e 1
 
 # =============================================================================
-# Tipo de Resultado — o que identify() retorna para cada palpite
+# Dificuldade de Quebra — apenas quatro valores válidos
 # =============================================================================
 
+CrackDifficulty = Literal["trivial", "moderate", "hard", "very_hard"]
 
+
+# =============================================================================
+# Tipo de Resultado — o que identify() retorna para cada palpite
+# =============================================================================
 @dataclass(frozen=True, slots=True)
 class HashCandidate:
     """
@@ -117,6 +122,7 @@ class HashCandidate:
     algorithm: str
     confidence_score: float
     reason: str
+    crack_difficulty: CrackDifficulty
     hashcat_mode: int | None = None
 
     def __post_init__(self) -> None:
@@ -241,6 +247,30 @@ HASHCAT_MODES: dict[str, int] = {
     "NTLM": 1000,
 }
 
+CRACK_DIFFICULTIES: dict[str, CrackDifficulty] = {
+    "MD5": "trivial",
+    "MD4": "trivial",
+    "NTLM": "trivial",
+    "SHA-1": "trivial",
+    "SHA-256": "trivial",
+    "SHA-512": "trivial",
+    "MySQL323": "trivial",
+    "MySQL5": "trivial",
+    "MD5 crypt": "moderate",
+    "Apache MD5-crypt": "moderate",
+    "phpass": "moderate",
+    "Django PBKDF2-SHA1": "moderate",
+    "bcrypt": "hard",
+    "Django PBKDF2-SHA256": "hard",
+    "SHA-256 crypt": "hard",
+    "SHA-512 crypt": "hard",
+    "scrypt": "hard",
+    "yescrypt": "hard",
+    "Argon2id": "very_hard",
+    "Argon2i": "very_hard",
+    "Argon2d": "very_hard",
+}
+
 # =============================================================================
 # Auxiliares
 # =============================================================================
@@ -325,6 +355,7 @@ def _make_candidate(algorithm: str, confidence_score: float,
     return HashCandidate(algorithm=algorithm,
                          confidence_score=confidence_score,
                          reason=reason,
+                         crack_difficulty=CRACK_DIFFICULTIES.get(algorithm),
                          hashcat_mode=HASHCAT_MODES.get(algorithm))
 
 
@@ -684,6 +715,10 @@ def _render_table(
     )
     table.add_column("algoritmo", style="bold white", no_wrap=True)
     table.add_column("confiança", no_wrap=True)
+    table.add_column(
+        "dificuldade",
+        no_wrap=True,
+    )
     table.add_column("modo hashcat", no_wrap=True)
     table.add_column("motivo", style="dim")
 
@@ -699,9 +734,13 @@ def _render_table(
                            f"{candidate.confidence_score:.0%} ({label})"
                            f"[/{color}]")
 
+        difficulty = (candidate.crack_difficulty
+                      if candidate.crack_difficulty is not None else "—")
+
         table.add_row(
             candidate.algorithm,
             confidence_text,
+            difficulty,
             mode,
             candidate.reason,
         )

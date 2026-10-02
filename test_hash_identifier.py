@@ -430,11 +430,10 @@ def test_hash_candidate_is_frozen() -> None:
     """
     Tentar mudar um HashCandidate deve gerar um erro
     """
-    candidate = HashCandidate(
-        algorithm="MD5",
-        confidence_score=0.6,
-        reason="test",
-    )
+    candidate = HashCandidate(algorithm="MD5",
+                              confidence_score=0.6,
+                              reason="test",
+                              crack_difficulty='hard')
 
     # try/except é a sintaxe do Python para "proteger contra um erro".
     try:
@@ -754,11 +753,10 @@ def test_json_includes_hashcat_mode(
 
 
 def test_candidate_without_mapping_has_none_mode() -> None:
-    candidate = HashCandidate(
-        algorithm="Algoritmo sem cadastro",
-        confidence_score=0.3,
-        reason="teste",
-    )
+    candidate = HashCandidate(algorithm="Algoritmo sem cadastro",
+                              confidence_score=0.3,
+                              reason="teste",
+                              crack_difficulty='hard')
 
     assert candidate.hashcat_mode is None
 
@@ -1081,3 +1079,27 @@ def test_s_recognizes_non_hash_format() -> None:
 
     assert classification == "outro formato"
     assert "URL" in detail
+
+
+def test_md5_has_trivial_crack_difficulty() -> None:
+    candidates = identify("5f4dcc3b5aa765d61d8327deb882cf99")
+
+    assert candidates[0].algorithm == "MD5"
+    assert candidates[0].crack_difficulty == "trivial"
+
+
+def test_bcrypt_has_hard_crack_difficulty() -> None:
+    sample = ("$2b$12$EixZaYVK1fsbw1ZfbX3OXe"
+              "PaWxn96p36WQNQy.uK4Of2T7G")
+
+    candidates = identify(sample)
+
+    assert candidates[0].algorithm == "bcrypt"
+    assert candidates[0].crack_difficulty == "hard"
+
+
+def test_non_hash_has_no_crack_difficulty() -> None:
+    candidates = identify("https://example.com")
+
+    assert candidates
+    assert candidates[0].crack_difficulty is None
