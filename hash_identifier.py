@@ -122,7 +122,7 @@ class HashCandidate:
     algorithm: str
     confidence_score: float
     reason: str
-    crack_difficulty: CrackDifficulty
+    crack_difficulty: CrackDifficulty | None = None
     hashcat_mode: int | None = None
 
     def __post_init__(self) -> None:
@@ -349,13 +349,98 @@ def _is_base32(text: str) -> bool:
 # =============================================================================
 # pylint: disable=too-many-return-statements,too-many-branches
 
+def _bcrypt_difficulty(text: str)->CrackDifficulty:
+    partes = text.split('$')
+    if len(partes) < 4:
+        return 'hard'
+
+    try:
+        cost = int(partes[2])
+    except ValueError:
+        return "hard"
+
+    if cost <=4:
+        return 'moderate'
+
+    if cost <= 12:
+        return 'hard'
+
+    return 'very_hard'
+
+def _argon2_difficulty(text: str) -> CrackDifficulty:
+    parts = text.split("$")
+
+    if len(parts) < 6:
+        return "very_hard"
+
+    parameters = parts[3].split(",")
+
+    values: dict[str, int] = {}
+
+    
+    try:
+        for parameter in parameters:
+            name, value = parameter.split("=", maxsplit=1)
+            values[name] = int(value)
+    except (ValueError, TypeError):
+        return "very_hard"
+
+    memory = values.get("m")
+    iterations = values.get("t")
+    parallelism = values.get("p")
+
+    if memory is None or iterations is None or parallelism is None:
+        return "very_hard"
+
+    if memory < 19_456 or iterations < 2:
+        return "moderate"
+
+    if memory < 65_536 or iterations < 3:
+        return "hard"
+
+    return "very_hard"
 
 def _make_candidate(algorithm: str, confidence_score: float,
-                    reason: str) -> HashCandidate:
+                    reason: str,text: str) -> HashCandidate:
+    if algorithm == 'bcrypt':
+        partes = text.split("$")
+        difficulty = _bcrypt_difficulty(text)
+        if len(partes) >= 4 and partes[2].isdigit():
+            cost = int(partes[2])
+
+            if cost <= 4:
+                reason = (
+                    f"{reason}; cost={cost} — "
+                    "muito mais fraco que o padrão 12"
+                )
+            elif cost <= 12:
+                reason = (
+                    f"{reason}; cost={cost} — "
+                    "configuração próxima do padrão moderno"
+                )
+            else:
+                reason = (
+                    f"{reason}; cost={cost} — "
+                    "configuração de custo muito alto"
+                )
+
+    elif algorithm in {"Argon2id", "Argon2i", "Argon2d", "Django Argon2"}:
+        difficulty = _argon2_difficulty(text)
+        parts = text.split("$")
+
+        if len(parts) >= 4:
+            reason = (
+                f"{reason}; parâmetros {parts[3]} — "
+                f"dificuldade estimada como {difficulty}"
+            )
+
+    else:
+        difficulty = CRACK_DIFFICULTIES.get(algorithm)
+    
     return HashCandidate(algorithm=algorithm,
                          confidence_score=confidence_score,
                          reason=reason,
-                         crack_difficulty=CRACK_DIFFICULTIES.get(algorithm),
+                         crack_difficulty=difficulty,
                          hashcat_mode=HASHCAT_MODES.get(algorithm))
 
 
@@ -405,7 +490,8 @@ def identify(raw_input: str) -> list[HashCandidate]:
             return [
                 _make_candidate(algorithm=algorithm,
                                 confidence_score=0.95,
-                                reason=note)
+                                reason=note,
+                                text=text)
             ]
 
     # ----- Passo 2: formatos especiais não-PHC -----
@@ -424,6 +510,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                     algorithm="NetNTLMv2",
                     confidence_score=0.85,
                     reason="formato usuario::dominio:desafio:hmac(32 hex):blob",
+                    text=text
                 )
             ]
         # Layout NetNTLMv1:
@@ -435,6 +522,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                     confidence_score=0.85,
                     reason=
                     "formato usuario::dominio:lm(48 hex):nt(48 hex):desafio",
+                    text=text
                 )
             ]
 
@@ -446,6 +534,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 confidence_score=0.85,
                 reason=
                 "começa com `*` seguido por 40 caracteres hex maiúsculos",
+                text=text
             )
         ]
 
@@ -457,6 +546,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 confidence_score=0.85,
                 reason=
                 "13 caracteres em `./0-9A-Za-z` — formato legado /etc/passwd",
+                text=text
             )
         ]
 
@@ -479,6 +569,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                     algorithm=algorithm,
                     confidence_score=confidence_score,
                     reason=f"{len(text)} caracteres hex — {label}",
+                    text=text
                 ))
         return candidates
 
@@ -499,6 +590,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                         confidence_score=0.85,
                         reason=
                         f"formato `${algo_name}$...` — PHC genérico, sem regra específica",
+                        text=text
                     )
                 ]
 
@@ -509,7 +601,8 @@ def identify(raw_input: str) -> list[HashCandidate]:
         return [
             _make_candidate(algorithm='URL (não é um hash)',
                             confidence_score=0.3,
-                            reason='começa com http:// ou https://')
+                            reason='começa com http:// ou https://',
+                            text=text)
         ]
 
     if text.startswith(('0x', '0X')) and len(text) > 2 and _is_hex(text[2:]):
@@ -519,6 +612,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 confidence_score=0.3,
                 reason=
                 'o prefixo `0x` é usado em endereços Ethereum, endereços de memória',
+                text=text
             )
         ]
     if text.startswith("eyJ"):
@@ -529,6 +623,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 algorithm="JWT (não é um hash)",
                 confidence_score=0.3,
                 reason='prefixo `eyJ` é o base64 de `{"` — JWT, não é um hash',
+                text=text
             )
         ]
 
@@ -539,6 +634,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 confidence_score=0.3,
                 reason=("usa somente A-Z e 2-7, com formato "
                         "compatível com Base32"),
+                text=text
             )
         ]
 
@@ -549,6 +645,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 confidence_score=0.3,
                 reason=("todos os caracteres pertencem ao alfabeto Base58 "
                         "e a entrada possui pelo menos 26 caracteres"),
+                text=text
             )
         ]
 
@@ -559,6 +656,7 @@ def identify(raw_input: str) -> list[HashCandidate]:
                 algorithm="Blob Base64 (não é um hash)",
                 confidence_score=0.3,
                 reason="contém caracteres exclusivos de base64 (`+`, `/`, `=`)",
+                text=text
             )
         ]
 

@@ -1103,3 +1103,121 @@ def test_non_hash_has_no_crack_difficulty() -> None:
 
     assert candidates
     assert candidates[0].crack_difficulty is None
+
+@pytest.mark.parametrize(
+    ("hash_value", "expected_difficulty"),
+    [
+        (
+            "$2b$04$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuv",
+            "moderate",
+        ),
+        (
+            "$2b$12$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuv",
+            "hard",
+        ),
+        (
+            "$2b$14$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuv",
+            "very_hard",
+        ),
+    ],
+)
+def test_bcrypt_dynamic_crack_difficulty(
+    hash_value: str,
+    expected_difficulty: str,
+) -> None:
+    candidates = identify(hash_value)
+
+    assert candidates
+    assert candidates[0].algorithm == "bcrypt"
+    assert candidates[0].crack_difficulty == expected_difficulty
+
+@pytest.mark.parametrize(
+    ("hash_value", "expected_difficulty"),
+    [
+        (
+            "$argon2id$v=19$m=8192,t=1,p=1$c2FsdA$aGFzaA",
+            "moderate",
+        ),
+        (
+            "$argon2id$v=19$m=32768,t=2,p=2$c2FsdA$aGFzaA",
+            "hard",
+        ),
+        (
+            "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA",
+            "very_hard",
+        ),
+    ],
+)
+def test_argon2_dynamic_crack_difficulty(
+    hash_value: str,
+    expected_difficulty: str,
+) -> None:
+    candidates = identify(hash_value)
+
+    assert candidates
+    assert candidates[0].algorithm == "Argon2id"
+    assert candidates[0].crack_difficulty == expected_difficulty
+
+@pytest.mark.parametrize(
+    ("prefix", "expected_algorithm"),
+    [
+        ("argon2id", "Argon2id"),
+        ("argon2i", "Argon2i"),
+        ("argon2d", "Argon2d"),
+    ],
+)
+def test_argon2_variants_use_dynamic_difficulty(
+    prefix: str,
+    expected_algorithm: str,
+) -> None:
+    hash_value = (
+        f"${prefix}$v=19$m=65536,t=3,p=4$"
+        "c2FsdA$aGFzaA"
+    )
+
+    candidates = identify(hash_value)
+
+    assert candidates
+    assert candidates[0].algorithm == expected_algorithm
+    assert candidates[0].crack_difficulty == "very_hard"
+
+def test_argon2_invalid_parameters_use_fallback() -> None:
+    hash_value = "$argon2id$v=19$m=invalid,t=3,p=4$c2FsdA$aGFzaA"
+
+    candidates = identify(hash_value)
+
+    assert candidates
+    assert candidates[0].algorithm == "Argon2id"
+    assert candidates[0].crack_difficulty == "very_hard"
+
+def test_non_dynamic_algorithm_uses_difficulty_table() -> None:
+    candidates = identify("5f4dcc3b5aa765d61d8327deb882cf99")
+
+    assert candidates
+    assert candidates[0].algorithm == "MD5"
+    assert candidates[0].crack_difficulty == "trivial"
+
+def test_bcrypt_invalid_cost_uses_fallback() -> None:
+    candidates = identify(
+        "$2b$xx$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuv"
+    )
+
+    assert candidates
+    assert candidates[0].algorithm == "bcrypt"
+    assert candidates[0].crack_difficulty == "hard"
+
+def test_bcrypt_reason_includes_cost() -> None:
+    candidates = identify(
+        "$2b$04$abcdefghijklmnopqrstuuabcdefghijklmnopqrstuv"
+    )
+
+    assert "cost=4" in candidates[0].reason
+    assert "padrão 12" in candidates[0].reason
+
+def test_argon2_reason_includes_parameters() -> None:
+    candidates = identify(
+        "$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA"
+    )
+
+    assert "m=65536,t=3,p=4" in candidates[0].reason
+    assert "very_hard" in candidates[0].reason
