@@ -377,7 +377,6 @@ def _argon2_difficulty(text: str) -> CrackDifficulty:
 
     values: dict[str, int] = {}
 
-    
     try:
         for parameter in parameters:
             name, value = parameter.split("=", maxsplit=1)
@@ -436,7 +435,7 @@ def _make_candidate(algorithm: str, confidence_score: float,
 
     else:
         difficulty = CRACK_DIFFICULTIES.get(algorithm)
-    
+
     return HashCandidate(algorithm=algorithm,
                          confidence_score=confidence_score,
                          reason=reason,
@@ -714,11 +713,7 @@ def _read_inputs(args: argparse.Namespace) -> list[str]:
     if args.hash is not None:
         return [args.hash]
 
-    if args.file is not None:
-        lines = args.file
-
-    else:
-        lines = sys.stdin
+    lines = args.file if args.file is not None else sys.stdin
 
     return [line.strip() for line in lines if line.strip()]
 
@@ -775,9 +770,9 @@ def _run_split_mode(raw_inputs: list[str], console: Console) -> int:
 
     for record_index, raw_input in enumerate(raw_inputs, start=1):
 
-        field = raw_input.split(':')
+        fields = raw_input.split(':')
 
-        for index, field in enumerate(field):
+        for index, field in enumerate(fields):
 
             classification, detail = _classify_fields(field)
 
