@@ -122,7 +122,7 @@ class HashCandidate:
     algorithm: str
     confidence_score: float
     reason: str
-    crack_difficulty: CrackDifficulty | None = None
+    crack_difficulty: CrackDifficulty | None
     hashcat_mode: int | None = None
 
     def __post_init__(self) -> None:
@@ -401,6 +401,7 @@ def _argon2_difficulty(text: str) -> CrackDifficulty:
 
 def _make_candidate(algorithm: str, confidence_score: float,
                     reason: str,text: str) -> HashCandidate:
+    difficulty: CrackDifficulty | None
     if algorithm == 'bcrypt':
         partes = text.split("$")
         difficulty = _bcrypt_difficulty(text)
@@ -697,6 +698,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         help='Imprime os candidatos em formato json.',
     )
     parser.add_argument('--file',
+                        # pylint: disable=deprecated-class
                         type=argparse.FileType('r'),
                         help='Lê hashes por arquivo')
     parser.add_argument('--cache',

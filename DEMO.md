@@ -100,7 +100,7 @@ just test
 
 Resultado registrado: **109 testes aprovados**. A suíte cobre formatos por prefixo e comprimento, JSON, arquivo, `stdin`, cache, modo Hashcat, `--split`, falsos positivos e estimativa de dificuldade.
 
-A verificação `just lint` também pode ser executada. No estado atual, ela aponta um aviso de depreciação de `argparse.FileType`, item técnico a acompanhar, sem afetar os testes funcionais aprovados.
+A verificação `just lint` também pode ser executada. O uso de `argparse.FileType` segue o enunciado, e o aviso de depreciação é suprimido somente nesse argumento.
 
 ## Conhecimento aplicado na implementação
 

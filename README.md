@@ -52,10 +52,10 @@ Construir uma ferramenta de linha de comando que identifica o algoritmo de hash 
 
 ## ✅ Definition of Done
 
-- [ ] `just test` passa (mais de 30 testes)
-- [ ] `just lint` passa (ruff + mypy --strict + pylint)
-- [ ] `just run -- <hash>` identifica corretamente os hashes de demonstração
-- [ ] Códigos de saída corretos para scripts de shell
+- [x] `just test` passa (mais de 30 testes)
+- [x] `just lint` passa (ruff + mypy --strict + pylint)
+- [x] `just run -- <hash>` identifica corretamente os hashes de demonstração
+- [x] Códigos de saída corretos para scripts de shell
 
 ## 🧪 Validation
 

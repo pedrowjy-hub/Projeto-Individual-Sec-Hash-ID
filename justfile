@@ -85,7 +85,9 @@ lint:
     uv run ruff check hash_identifier.py test_hash_identifier.py
     @echo ""
     @echo "=== Pylint ==="
-    uv run pylint hash_identifier.py
+    # FileType is required by the enunciado; its deprecation warning is suppressed
+    # only on that argument in hash_identifier.py.
+    uv run pylint hash_identifier.py --disable=consider-using-with
     @echo ""
     @echo "=== Mypy ==="
     uv run mypy hash_identifier.py
