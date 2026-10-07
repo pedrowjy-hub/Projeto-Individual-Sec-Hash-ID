@@ -137,3 +137,6 @@ Os principais aprendizados que podem ser compartilhados são:
 - Toda nova regra deve documentar seu padrão e limites, além de incluir testes automatizados para evitar regressões.
 
 Com esta documentação, outro membro consegue repetir os comandos, observar as saídas reais e compreender as decisões que orientaram a implementação.
+
+##Link para o vídeo da Demo
+https://youtu.be/wMFFnrY-iWk
