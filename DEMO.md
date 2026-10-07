@@ -138,5 +138,5 @@ Os principais aprendizados que podem ser compartilhados são:
 
 Com esta documentação, outro membro consegue repetir os comandos, observar as saídas reais e compreender as decisões que orientaram a implementação.
 
-##Link para o vídeo da Demo
+## Link para o vídeo da Demo
 https://youtu.be/wMFFnrY-iWk
